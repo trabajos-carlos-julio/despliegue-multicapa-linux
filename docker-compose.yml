@@ -1,0 +1,83 @@
+services:
+  # ---------------- FRONTEND ----------------
+  frontend:
+    build:
+      context: ./Frontend_Cine/cinema
+    container_name: cine-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - cine_network
+    restart: unless-stopped
+
+  # ---------------- BACKEND ----------------
+  backend:
+    build:
+      context: ./Backend_API_Cine/cinema
+    container_name: cine-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=staging
+      - DB_URL=jdbc:postgresql://postgres:5432/cine_db
+      - DB_USER=cine_user
+      - DB_PASSWORD=cine_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
+    networks:
+      - cine_network
+    restart: unless-stopped
+
+  # ---------------- BASE DE DATOS ----------------
+  postgres:
+    image: postgres:17
+    container_name: cine-db
+    environment:
+      POSTGRES_DB: cine_db
+      POSTGRES_USER: cine_user
+      POSTGRES_PASSWORD: cine_password
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cine_user -d cine_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - cine_data:/var/lib/postgresql/data
+    networks:
+      - cine_network
+    restart: unless-stopped
+
+  # ---------------- LIQUIBASE (MIGRACIONES) ----------------
+  liquibase:
+    build:
+      context: ./BaseDeDatos_Cine/cinema/docker/liquibase
+    container_name: cine-liquibase
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./BaseDeDatos_Cine/cinema/:/liquibase/changelog
+    command:
+      - --search-path=/liquibase/changelog
+      - --changeLogFile=changelog-master.yaml
+      - --url=jdbc:postgresql://postgres:5432/cine_db
+      - --username=cine_user
+      - --password=cine_password
+      - update
+    networks:
+      - cine_network
+    restart: on-failure
+
+networks:
+  cine_network:
+    driver: bridge
+
+volumes:
+  cine_data:
